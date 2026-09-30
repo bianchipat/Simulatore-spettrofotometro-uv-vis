@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulatore Spettrofotometro UV-Vis (v2)</title>
+<style>
+:root{
+  --bg:#e9edf0; --panel:#1c2530; --panel-alt:#28333f; --panel-line:#39465533;
+  --accent:#3ecf8e; --accent-dim:#2a9d6f; --amber:#f0a83c; --danger:#e0603f;
+  --ink:#1c2530; --paper:#ffffff; --line:#d7dee3; --muted:#6b7885;
+  --disp-bg:#0a0f14; --disp-fg:#4be3b0;
+  --radius:6px;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:"IBM Plex Sans","Segoe UI",sans-serif; background:var(--bg); color:var(--ink);
+  display:flex; flex-direction:column; height:100%; overflow:hidden;
+}
+.mono{font-family:"IBM Plex Mono","Roboto Mono",monospace}
+header{
+  background:var(--panel); color:#fff; display:flex; align-items:center; gap:8px;
+  padding:8px 12px; flex-wrap:wrap; flex-shrink:0; padding-top:calc(8px + env(safe-area-inset-top,0px));
+  border-bottom:2px solid #0006;
+}
+header h1{font-size:14px; font-weight:600; margin:0 14px 0 2px; letter-spacing:.2px}
+.btn{
+  background:var(--panel-alt); color:#fff; border:1px solid var(--panel-line); border-radius:var(--radius);
+  padding:7px 12px; font-size:12.5px; font-family:inherit; cursor:pointer; white-space:nowrap;
+}
+.btn:hover{background:#33404d}
+.btn.active{background:var(--accent); color:#08130d; font-weight:600; border-color:var(--accent)}
+.btn:disabled{opacity:.35; cursor:not-allowed}
+.spacer{flex:1}
+.status{font-size:12px; padding:6px 10px; border-radius:20px; background:#0004; display:flex; align-items:center; gap:6px}
+.dot{width:8px; height:8px; border-radius:50%; background:var(--muted)}
+.dot.ready{background:var(--accent)}
+.dot.busy{background:var(--amber); animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+main{flex:1; display:flex; overflow:hidden; position:relative}
+.side{width:250px; flex-shrink:0; background:var(--paper); border-right:1px solid var(--line); padding:14px; overflow-y:auto}
+.side h2{font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:14px 0 8px}
+.side h2:first-child{margin-top:0}
+.step{display:flex; align-items:center; gap:8px; padding:9px 8px; border-radius:var(--radius); margin-bottom:6px; background:#f4f6f8; font-size:12.5px; cursor:pointer; border:1px solid transparent}
+.step:hover{border-color:var(--line)}
+.step.done{background:#e8f9f1; color:var(--accent-dim)}
+.step.done::before{content:"✓ "; font-weight:700}
+.step.locked{opacity:.5; cursor:not-allowed}
+.cuvette-list{font-size:11.5px; color:var(--muted); margin:4px 0 10px 4px; line-height:1.7}
+.cuvette-list span{display:block}
+.cuvette-list span.ok{color:var(--accent-dim)}
+.seqbtn{width:100%; text-align:left; margin-bottom:6px; padding:10px 10px; font-size:12.5px; border-radius:var(--radius); border:1px solid var(--line); background:#f4f6f8; cursor:pointer; font-family:inherit; color:var(--ink)}
+.seqbtn.active{background:var(--accent); color:#08130d; font-weight:700; border-color:var(--accent)}
+.seqbtn.done{background:#e8f9f1; color:var(--accent-dim); cursor:default}
+.seqbtn:disabled{opacity:.4; cursor:not-allowed}
+.progress{font-size:11.5px; color:var(--muted); margin-bottom:8px}
+.info-box{font-size:12.5px; color:var(--muted); background:#f4f6f8; border-radius:var(--radius); padding:10px; line-height:1.5}
+.center{flex:1; display:flex; flex-direction:column; overflow:hidden}
+.tabs{display:flex; gap:2px; padding:10px 14px 0; background:var(--paper); border-bottom:1px solid var(--line)}
+.tab{padding:9px 16px; font-size:12.5px; cursor:pointer; border-radius:6px 6px 0 0; color:var(--muted); font-weight:500}
+.tab.active{background:var(--bg); color:var(--ink); font-weight:700}
+.tabpane{flex:1; overflow:auto; padding:18px; background:var(--bg)}
+canvas{background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); max-width:100%}
+table{width:100%; border-collapse:collapse; font-size:12.5px; background:var(--paper); border-radius:var(--radius); overflow:hidden}
+th,td{padding:7px 10px; text-align:right; border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{background:#f4f6f8; font-weight:600; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.4px}
+.reg-box{display:flex; gap:22px; margin:12px 0; font-size:13px; flex-wrap:wrap}
+.reg-box b{font-family:"IBM Plex Mono",monospace; font-size:15px}
+.checkpoint{display:flex; gap:10px; flex-wrap:wrap; margin:14px 0}
+.checkpoint button{flex:1; min-width:220px; padding:12px; border-radius:var(--radius); border:1px solid var(--line); font-family:inherit; font-size:12.5px; cursor:pointer}
+.checkpoint .ok{background:var(--accent); color:#08130d; font-weight:700; border-color:var(--accent)}
+.checkpoint .bad{background:#fdeee9; color:var(--danger); border-color:#f1c4b6}
+.checkpoint .neutral{background:#eef1f3; color:var(--ink)}
+.notes{margin-top:16px}
+.notes h2{font-size:11px; text-transform:uppercase; color:var(--muted); letter-spacing:.5px; margin:0 0 6px}
+.notes textarea{width:100%; min-height:70px; border:1px solid var(--line); border-radius:var(--radius); padding:9px; font-family:inherit; font-size:12.5px; resize:vertical}
+footer{flex-shrink:0; background:var(--disp-bg); color:var(--disp-fg); display:flex; gap:28px; align-items:center; padding:14px 24px; padding-bottom:calc(14px + env(safe-area-inset-bottom,0px)); border-top:2px solid #0008}
+.readout{display:flex; flex-direction:column}
+.readout .l{font-size:10px; color:#4be3b099; letter-spacing:1px; text-transform:uppercase}
+.readout .v{font-size:28px; font-weight:700; font-family:"IBM Plex Mono",monospace}
+footer .fspacer{flex:1}
+.wm{font-size:9px;line-height:1.45;text-align:right;color:#4be3b0;opacity:.33;filter:blur(.35px);letter-spacing:.3px;user-select:none;pointer-events:none;margin-left:12px}
+.methodname{font-size:11px; color:#4be3b088; font-family:"IBM Plex Mono",monospace}
+.overlay{position:fixed; inset:0; background:#1c253099; display:none; align-items:center; justify-content:center; z-index:50; padding:16px}
+.overlay.show{display:flex}
+.modal{background:var(--paper); border-radius:10px; width:min(560px,100%); max-height:88vh; overflow-y:auto; padding:22px}
+.modal h2{margin:0 0 14px; font-size:16px}
+.field{margin-bottom:12px}
+.field label{display:block; font-size:11.5px; color:var(--muted); margin-bottom:4px}
+.field input,.field textarea{width:100%; padding:8px; border:1px solid var(--line); border-radius:5px; font-family:inherit; font-size:13px}
+.row2{display:flex; gap:10px}
+.row2>*{flex:1}
+.list-row{display:flex; gap:8px; margin-bottom:6px; align-items:center}
+.list-row input{flex:1}
+.list-row .rm{background:none; border:none; color:var(--danger); cursor:pointer; font-size:16px; padding:0 4px}
+.addrow{background:none; border:1px dashed var(--line); border-radius:5px; padding:6px; font-size:12px; color:var(--muted); cursor:pointer; width:100%; margin-top:2px}
+.modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:16px}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12px}
+.legend .lg{display:flex;align-items:center;gap:6px}
+.legend i{width:14px;height:4px;border-radius:2px;display:inline-block}
+.uvnote{margin-top:10px;font-size:11.5px;line-height:1.45;background:#fff4e0;color:#8a5a00;border:1px solid #f0d49a;border-radius:6px;padding:8px 10px}
+.btn.game{background:#f0a83c;color:#1c1408;border-color:#f0a83c;font-weight:700}
+.btn.game.on{box-shadow:0 0 0 2px #fff8}
+.simview{position:absolute;inset:0;z-index:20;background:radial-gradient(circle at 20% 0,#1b2a3d,#0b111a);color:#e6edf3;overflow:auto;padding:22px}
+.sv-title{text-align:center;margin:7vh auto 0;max-width:560px}
+.sv-title h1{font-family:"IBM Plex Mono",monospace;font-size:26px;letter-spacing:1px;color:var(--disp-fg);margin:0 0 12px;text-shadow:0 0 14px #4be3b055}
+.sv-title p{color:#9fb0c0;line-height:1.6;font-size:14px;margin:0 0 22px}
+.gbtn{background:var(--accent);color:#08130d;border:none;border-radius:8px;padding:12px 28px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;box-shadow:0 0 0 3px #3ecf8e33}
+.gbtn.sec{background:#28333f;color:#e6edf3;box-shadow:none;font-weight:600}
+.hud{display:flex;align-items:center;gap:14px;margin-bottom:16px;font-family:"IBM Plex Mono",monospace;font-size:12px}
+.hud .bar{flex:1;height:8px;background:#1f2b3a;border-radius:4px;overflow:hidden}
+.hud .bar i{display:block;height:100%;background:var(--accent)}
+.sv-main{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.sv-steps{width:200px;display:flex;flex-direction:column;gap:8px}
+.sv-step{text-align:left;padding:10px 12px;border-radius:8px;border:1px solid #2a3a4d;background:#131d2a;color:#e6edf3;cursor:pointer;font-family:inherit;font-size:13px}
+.sv-step.cur{border-color:var(--accent);box-shadow:0 0 0 2px #3ecf8e33}
+.sv-step.done{color:var(--disp-fg)}
+.sv-step:disabled{opacity:.35;cursor:not-allowed}
+.sv-card{flex:1;min-width:280px;background:#131d2a;border:1px solid #2a3a4d;border-radius:10px;padding:20px;line-height:1.6;font-size:13.5px}
+.sv-card h2{margin:0 0 12px;font-size:16px;color:var(--disp-fg)}
+.sv-card p{margin:0 0 10px}
+.mail{background:#f4f6f8;color:#1c2530;border-radius:8px;padding:16px;font-size:13px;line-height:1.6}
+.mail .hd{border-bottom:1px solid #d7dee3;padding-bottom:8px;margin-bottom:10px;font-size:12px;color:#556}
+.q{margin:14px 0}
+.q .opts{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.opt{text-align:left;padding:8px 10px;border-radius:6px;border:1px solid #2a3a4d;background:#0f1722;color:#e6edf3;cursor:pointer;font-family:inherit;font-size:13px}
+.opt.ok{border-color:var(--accent);background:#12301f}
+.opt.no{border-color:var(--danger);background:#3a1a14}
+.fb{font-size:12.5px;color:#9fb0c0;margin-top:6px}
+.sv-card textarea{width:100%;min-height:230px;background:#0f1722;color:#e6edf3;border:1px solid #2a3a4d;border-radius:6px;padding:10px;font-family:"IBM Plex Mono",monospace;font-size:12px}
+.grp{display:flex;flex-direction:column;gap:3px}
+.grp-l{font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:#9fb0c0}
+.seg{display:flex}
+.seg .btn{border-radius:0}
+.seg .btn:first-child{border-radius:6px 0 0 6px}
+.seg .btn:last-child{border-radius:0 6px 6px 0}
+.vsep{width:1px;align-self:stretch;background:#ffffff33;margin:0 12px}
+.btn.outline{background:transparent;border:1px solid #ffffff66}
+.tiles{display:flex;gap:6px;margin-bottom:6px}
+.tile{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px 6px;border-radius:8px;background:#f4f6f8;border:1px solid transparent;cursor:pointer;color:var(--ink);font-size:10px;line-height:1.25;text-align:center;font-family:inherit;position:relative;word-break:break-word;min-width:0}
+.tile svg{width:48px;height:48px}
+.tile:hover{border-color:var(--line)}
+.tile.done{background:#e8f9f1;color:var(--accent-dim)}
+.tile.done::after{content:"✓";position:absolute;top:2px;right:6px;font-weight:700;font-size:12px}
+.tile.locked,.tile:disabled{opacity:.4;cursor:not-allowed}
+.tile.done:disabled{opacity:1;cursor:default}
+.tile.active{background:var(--accent);color:#08130d;font-weight:700;border-color:var(--accent)}
+.cuvette-list{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.cuvette-list .mc{display:flex;flex-direction:column;align-items:center;color:var(--muted)}
+.cuvette-list .mc span{display:block;font-size:9.5px}
+@media(max-width:720px){.tile svg{width:34px;height:34px}}
+.loading-overlay{position:absolute; inset:0; background:#e9edf0cc; display:none; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:30}
+.loading-overlay.show{display:flex}
+.spinner{width:46px; height:46px; border-radius:50%; border:4px solid #cfd7dc; border-top-color:var(--accent-dim); animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:12.5px; color:var(--muted); font-family:"IBM Plex Mono",monospace}
+@media(max-width:720px){ .side{width:180px; padding:10px} header h1{display:none} }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>UV‑Vis Sim</h1>
+  <div class="grp"><span class="grp-l">1 · Modalità</span><div class="seg"><button class="btn" id="modeScan">Scansione spettrale</button><button class="btn" id="modeSingle">Singola lunghezza d'onda</button></div></div>
+  <span class="vsep"></span>
+  <div class="grp"><span class="grp-l">2 · Metodo</span><button class="btn outline" id="openMethod">Imposta metodo</button></div>
+  <span class="vsep"></span>
+  <div class="grp"><span class="grp-l">3 · Storia</span><button class="btn game" id="openSim">Simulazione</button></div>
+  <span class="spacer"></span>
+  <span class="status"><span class="dot" id="statusDot"></span><span id="statusText">Pronto</span></span>
+</header>
+
+<main>
+  <div class="side">
+    <h2>Metodo attivo</h2>
+    <div class="mono" style="font-size:12px;line-height:1.6" id="methodSummary"></div>
+    <div class="uvnote" id="uvNote" style="display:none">Stai lavorando nel range dell'UV (sotto i 350 nm): utilizza una cuvetta in quarzo. Le cuvette di plastica monouso assorbono e il rumore di fondo diventa troppo alto.</div>
+
+    <h2>Operazioni preliminari</h2>
+    <div class="tiles">
+      <div class="tile" id="stepCuv" title="Prepara le cuvette"></div>
+      <div class="tile locked" id="stepBlank" title="Inserisci il bianco"></div>
+      <div class="tile locked" id="stepZero" title="Azzera con il bianco"></div>
+    </div>
+    <div class="cuvette-list" id="cuvList"></div>
+
+    <div id="seqSection"></div>
+  </div>
+
+  <div class="center">
+    <div class="tabs">
+      <div class="tab active" data-tab="spettro">Spettro</div>
+      <div class="tab" data-tab="dati">Dati</div>
+      <div class="tab" data-tab="taratura">Retta di taratura</div>
+    </div>
+    <div class="tabpane" id="pane"></div>
+  </div>
+
+  <div class="simview" id="simView" style="display:none"></div>
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loadingText">Lettura in corso…</div>
+  </div>
+</main>
+
+<footer>
+  <div class="readout"><span class="l">Lunghezza d'onda</span><span class="v" id="dispWl">— nm</span></div>
+  <div class="readout"><span class="l">Assorbanza</span><span class="v" id="dispAbs">— ABS</span></div>
+  <span class="fspacer"></span>
+  <span class="methodname" id="dispMethod"></span>
+  <span class="wm">creato con Claude<br>prof. Bianchi - IISS Galilei di Bolzano - 2026</span>
+</footer>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>Imposta metodo</h2>
+    <div class="field"><label>Nome del metodo</label><input id="mName"></div>
+    <div class="field"><label>Descrizione</label><textarea id="mDesc" rows="2"></textarea></div>
+    <div class="row2">
+      <div class="field" id="wlSingleField"><label>Lunghezza d'onda (nm)</label><input type="number" id="mWl"></div>
+      <div class="field" id="wlStartField" style="display:none"><label>λ iniziale (nm)</label><input type="number" id="mWlStart"></div>
+      <div class="field" id="wlEndField" style="display:none"><label>λ finale (nm)</label><input type="number" id="mWlEnd"></div>
+    </div>
+    <div class="uvnote" id="uvHint" style="display:none;margin:0 0 12px">Stai lavorando nel range dell'UV (sotto i 350 nm): utilizza una cuvetta in quarzo. Le cuvette di plastica monouso assorbono e il rumore di fondo diventa troppo alto.</div>
+    <div class="field"><label>Unità di misura della concentrazione</label><input id="mConcUnit" placeholder="es. mg/L"></div>
+    <div class="field">
+      <label>Soluzioni standard</label>
+      <div id="stdRows"></div>
+      <button class="addrow" id="addStd" type="button">+ Aggiungi standard</button>
+    </div>
+    <div class="field">
+      <label>Campioni</label>
+      <div id="smpRows"></div>
+      <button class="addrow" id="addSmp" type="button">+ Aggiungi campione</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#eef1f3;color:#1c2530" id="cancelMethod">Annulla</button>
+      <button class="btn active" id="saveMethod">Salva metodo</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let state = {
+  mode:'single',
+  method:{
+    name:'Determinazione proteine', desc:'Curva di taratura standard/campione',
+    wl:595, wlStart:400, wlEnd:700, concUnit:'mg/L',
+    standards:[{name:'Standard 1',conc:2},{name:'Standard 2',conc:4},{name:'Standard 3',conc:6},{name:'Standard 4',conc:8}],
+    samples:[{name:'Campione 1'},{name:'Campione 2'}]
+  },
+  prep:{cuvOk:false, blank:false, zero:false},
+  phase:'prep', // prep | seq | checkpoint | done
+  queue:[], qIndex:0, manualSub:0, prevLabel:'Bianco', seqContext:'standards',
+  run:null, scans:[], revealedStd:[], revealedSample:[], calib:null, results:null,
+  checkpointChoice:null, checkpointStage:'decide', tab:'spettro'
+};
+
+const $=s=>document.querySelector(s);
+const el=(t,c,txt)=>{let e=document.createElement(t); if(c)e.className=c; if(txt!=null)e.textContent=txt; return e;};
+function gauss(mu,sigma){ let u=1-Math.random(), v=Math.random(); return mu+sigma*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function pickKind(){ const errs=['offset','outlier','drift','saturation','swap']; return Math.random()<(1/3) ? errs[Math.floor(Math.random()*errs.length)] : 'correct'; }
+
+function cuvetteNames(){ return ['Bianco', ...state.method.standards.map(s=>s.name), ...state.method.samples.map(s=>s.name)]; }
+
+function resetAll(){
+  state.prep={cuvOk:false,blank:false,zero:false}; state.phase='prep';
+  state.queue=[]; state.qIndex=0; state.manualSub=0; state.prevLabel='Bianco'; state.seqContext='standards';
+  state.run=null; state.scans=[]; state.revealedStd=[]; state.revealedSample=[]; state.calib=null; state.results=null;
+  state.checkpointChoice=null; state.checkpointStage='decide';
+  $('#dispWl').textContent='— nm'; $('#dispAbs').textContent='— ABS';
+  setStatus('ready');
+}
+function setStatus(kind,text){
+  const dot=$('#statusDot');
+  dot.className='dot'+(kind==='ready'?' ready':kind==='busy'?' busy':'');
+  $('#statusText').textContent = text || (kind==='ready'?'Pronto':kind==='busy'?'In lettura…':'Errore');
+}
+function showLoading(text){ $('#loadingText').textContent=text; $('#loadingOverlay').classList.add('show'); }
+function hideLoading(){ $('#loadingOverlay').classList.remove('show'); }
+
+/* ---------- prep steps ---------- */
+$('#stepCuv').onclick=()=>{ if(state.phase!=='prep') return; state.prep.cuvOk=!state.prep.cuvOk; if(!state.prep.cuvOk){state.prep.blank=false;state.prep.zero=false;} renderSide(); };
+$('#stepBlank').onclick=()=>{ if(state.phase!=='prep'||!state.prep.cuvOk) return; state.prep.blank=!state.prep.blank; if(!state.prep.blank)state.prep.zero=false; renderSide(); };
+$('#stepZero').onclick=()=>{
+  if(state.phase!=='prep'||!(state.prep.cuvOk&&state.prep.blank)) return;
+  state.prep.zero=!state.prep.zero;
+  if(state.prep.zero) startSequence(); else state.phase='prep';
+  renderSide(); renderPane();
+};
+$('#modeScan').onclick=()=>{ closeSim(); state.mode='scan'; resetAll(); setMode(); };
+$('#modeSingle').onclick=()=>{ closeSim(); state.mode='single'; resetAll(); setMode(); };
+function setMode(){
+  $('#modeScan').classList.toggle('active',state.mode==='scan');
+  $('#modeSingle').classList.toggle('active',state.mode==='single');
+  renderSide(); renderPane();
+}
+
+/* ---------- method modal ---------- */
+function openMethodModal(){
+  const m=state.method;
+  $('#mName').value=m.name; $('#mDesc').value=m.desc; $('#mConcUnit').value=m.concUnit;
+  $('#mWl').value=m.wl; $('#mWlStart').value=m.wlStart; $('#mWlEnd').value=m.wlEnd;
+  $('#wlSingleField').style.display = state.mode==='single'?'block':'none';
+  $('#wlStartField').style.display = state.mode==='scan'?'block':'none';
+  $('#wlEndField').style.display = state.mode==='scan'?'block':'none';
+  renderRows('#stdRows', m.standards, 'conc');
+  renderRows('#smpRows', m.samples, null);
+  updUvHint(); $('#overlay').classList.add('show');
+}
+function renderRows(sel, arr, valKey){
+  const box=$(sel); box.innerHTML='';
+  arr.forEach((item,i)=>{
+    const row=el('div','list-row');
+    const nameInp=el('input'); nameInp.value=item.name; nameInp.oninput=e=>item.name=e.target.value;
+    row.appendChild(nameInp);
+    if(valKey){
+      const valInp=el('input'); valInp.type='number'; valInp.style.maxWidth='90px'; valInp.value=item[valKey];
+      valInp.oninput=e=>item[valKey]=parseFloat(e.target.value)||0;
+      row.appendChild(valInp);
+    }
+    const rm=el('button','rm','✕'); rm.type='button'; rm.onclick=()=>{arr.splice(i,1); renderRows(sel,arr,valKey);};
+    row.appendChild(rm);
+    box.appendChild(row);
+  });
+}
+function updUvHint(){const v=parseFloat(state.mode==='scan'?$('#mWlStart').value:$('#mWl').value); $('#uvHint').style.display=v<350?'block':'none';}
+$('#mWl').oninput=updUvHint; $('#mWlStart').oninput=updUvHint;
+$('#openMethod').onclick=openMethodModal;
+$('#cancelMethod').onclick=()=>$('#overlay').classList.remove('show');
+$('#addStd').onclick=()=>{ state.method.standards.push({name:'Standard '+(state.method.standards.length+1), conc:0}); renderRows('#stdRows',state.method.standards,'conc'); };
+$('#addSmp').onclick=()=>{ state.method.samples.push({name:'Campione '+(state.method.samples.length+1)}); renderRows('#smpRows',state.method.samples,null); };
+$('#saveMethod').onclick=()=>{
+  const m=state.method;
+  state.sim.applied=false; m.name=$('#mName').value||'Metodo'; m.desc=$('#mDesc').value; m.concUnit=$('#mConcUnit').value||'';
+  m.wl=parseFloat($('#mWl').value)||500; m.wlStart=parseFloat($('#mWlStart').value)||400; m.wlEnd=parseFloat($('#mWlEnd').value)||700;
+  resetAll();
+  $('#overlay').classList.remove('show');
+  renderSide(); renderPane();
+};
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); state.tab=t.dataset.tab; renderPane();
+});
+
+/* ---------- generate true values ---------- */
+function startSequence(){
+  const kind=pickKind(); const m=state.method;
+  if(state.mode==='single'){
+    const SC=state.sim&&state.sim.applied?state.simCfg:null; const slope=SC?SC.slope:0.08+Math.random()*0.05;
+    const stdConcs=m.standards.map(s=>s.conc);
+    const sampleConcs=SC?m.samples.map(()=>SC.trueConc):m.samples.map(()=> stdConcs.length? stdConcs[Math.floor(Math.random()*stdConcs.length)]*(0.6+Math.random()*0.8) : 5);
+    let stdAbs=stdConcs.map(c=>Math.max(0, slope*c+gauss(0,0.01)));
+    let sampleAbs=sampleConcs.map(c=>Math.max(0, slope*c+gauss(0,0.008)));
+    if(kind==='offset'){ const off=0.12+Math.random()*0.1; stdAbs=stdAbs.map(a=>a+off); sampleAbs=sampleAbs.map(a=>a+off); }
+    if(kind==='drift'){ stdAbs=stdAbs.map((a,i)=>a+i*0.02); sampleAbs=sampleAbs.map((a,i)=>a+(stdAbs.length+i)*0.02); }
+    if(kind==='saturation'){ const th=0.75*Math.max(...stdAbs); stdAbs=stdAbs.map(a=>a>th?th+gauss(0,0.006):a); sampleAbs=sampleAbs.map(a=>a>th?th+gauss(0,0.006):a); }
+    if(kind==='outlier'){ const i=Math.floor(Math.random()*stdAbs.length); stdAbs[i]+=(Math.random()>0.5?1:-1)*(0.15+Math.random()*0.15); }
+    if(kind==='swap'&&stdAbs.length>=2){ const i=0,j=stdAbs.length-1; [stdAbs[i],stdAbs[j]]=[stdAbs[j],stdAbs[i]]; }
+    state.run={kind, slope, stdAbs, sampleAbs, sampleConcs};
+    state.queue=m.standards.map((s,i)=>({type:'standard', idx:i, name:s.name}));
+    state.seqContext='standards';
+  } else {
+    const n=140, rng=m.wlEnd-m.wlStart, pk=m.wlStart+rng*(0.3+Math.random()*0.4), w=rng*0.06;
+    const maxC=Math.max(1e-9,...m.standards.map(s=>s.conc)), k=(0.8+Math.random()*0.3)/maxC;
+    const g=(x,c,h,sw)=>h*Math.exp(-((x-c)**2)/(2*sw*sw));
+    const mkSp=peaks=>Array.from({length:n},(_,i)=>{const wl=m.wlStart+rng*i/(n-1); let a=0.005+gauss(0,0.003); peaks.forEach(p=>a+=g(wl,p.c,p.h,p.w)); return {wl,abs:Math.max(0,a)};});
+    const stdSp=m.standards.map(s=>mkSp([{c:pk,h:k*s.conc,w}]));
+    const smpSp=m.samples.map(()=>{
+      const mainH=(0.25+Math.random()*0.65)*k*maxC, peaks=[{c:pk,h:mainH,w}], extra=1+Math.floor(Math.random()*3);
+      for(let j=0;j<extra;j++){ let c; do{c=m.wlStart+rng*(0.05+Math.random()*0.9);}while(Math.abs(c-pk)<w*3); peaks.push({c,h:mainH*(0.1+Math.random()*0.4),w:w*(0.5+Math.random()*0.9)}); }
+      return mkSp(peaks);
+    });
+    state.run={kind, stdSp, smpSp};
+    state.queue=[...m.standards.map((s,i)=>({type:'scan',kind:'standard',idx:i,name:s.name})), ...m.samples.map((s,i)=>({type:'scan',kind:'sample',idx:i,name:s.name}))];
+    state.seqContext='standards';
+  }
+  state.qIndex=0; state.manualSub=0; state.prevLabel='Bianco'; state.phase='seq';
+}
+
+function computeRegression(std){
+  const n=std.length, xs=std.map(s=>s.conc), ys=std.map(s=>s.abs);
+  const sx=xs.reduce((a,b)=>a+b,0), sy=ys.reduce((a,b)=>a+b,0);
+  const sxy=xs.reduce((a,x,i)=>a+x*ys[i],0), sxx=xs.reduce((a,x)=>a+x*x,0);
+  const slope=(n*sxy-sx*sy)/(n*sxx-sx*sx||1e-9);
+  const intercept=(sy-slope*sx)/n;
+  const yMean=sy/n, ssTot=ys.reduce((a,y)=>a+(y-yMean)**2,0), ssRes=ys.reduce((a,y,i)=>a+(y-(slope*xs[i]+intercept))**2,0);
+  return {slope, intercept, r2: ssTot>1e-9?1-ssRes/ssTot:1};
+}
+
+/* ---------- manual sequence ---------- */
+function seqRemovePrev(){ if(state.phase!=='seq'||state.manualSub!==0) return; state.manualSub=1; renderSide(); }
+function seqInsertCurrent(){ if(state.phase!=='seq'||state.manualSub!==1) return; state.manualSub=2; renderSide(); }
+function seqPressEnter(){
+  if(state.phase!=='seq'||state.manualSub!==2) return;
+  const item=state.queue[state.qIndex];
+  setStatus('busy'); showLoading(item.type==='scan'?'Scansione in corso…':'Lettura in corso…'); renderSide();
+  const delay=1400+Math.random()*1300;
+  setTimeout(()=>{
+    hideLoading();
+    if(item.type==='scan'){
+      const pts=item.kind==='standard'?state.run.stdSp[item.idx]:state.run.smpSp[item.idx];
+      const pm=pts.reduce((a,p)=>p.abs>a.abs?p:a,pts[0]);
+      $('#dispWl').textContent=pm.wl.toFixed(1)+' nm'; $('#dispAbs').textContent=pm.abs.toFixed(3)+' ABS';
+      state.scans.push({name:item.name, kind:item.kind, tag:(item.kind==='standard'?'S':'C')+(item.idx+1), color:SCOL[state.scans.length%SCOL.length], pts, peak:pm, conc:item.kind==='standard'?state.method.standards[item.idx].conc:null});
+      state.prevLabel=item.name; state.qIndex++;
+      if(state.qIndex<state.queue.length){ state.manualSub=0; setStatus('ready'); }
+      else { state.phase='done'; setStatus('ready','Scansioni completate'); }
+      renderSide(); renderPane();
+      return;
+    }
+    let finalAbs;
+    if(item.type==='standard'){
+      finalAbs = state.seqContext==='redo-one'
+        ? Math.max(0, state.run.slope*state.method.standards[item.idx].conc+gauss(0,0.01))
+        : state.run.stdAbs[item.idx];
+    } else {
+      finalAbs = state.run.sampleAbs[item.idx];
+    }
+    $('#dispWl').textContent=state.method.wl.toFixed(1)+' nm'; $('#dispAbs').textContent=finalAbs.toFixed(3)+' ABS';
+
+    if(item.type==='standard'){
+      if(state.seqContext==='redo-one'){
+        state.revealedStd[item.idx]={name:item.name, conc:state.method.standards[item.idx].conc, abs:finalAbs};
+        state.calib=computeRegression(state.revealedStd);
+        state.phase='checkpoint'; state.checkpointStage='decide'; state.checkpointChoice=null;
+      } else {
+        state.revealedStd.push({name:item.name, conc:state.method.standards[item.idx].conc, abs:finalAbs});
+        state.prevLabel=item.name; state.qIndex++;
+        if(state.qIndex<state.queue.length){ state.manualSub=0; }
+        else { state.calib=computeRegression(state.revealedStd); state.phase='checkpoint'; state.checkpointStage='decide'; state.checkpointChoice=null; }
+      }
+    } else {
+      state.revealedSample.push({name:item.name, abs:finalAbs, conc:(finalAbs-state.calib.intercept)/(state.calib.slope||1e-9)});
+      state.prevLabel=item.name; state.qIndex++;
+      if(state.qIndex<state.queue.length){ state.manualSub=0; }
+      else { state.phase='done'; state.results={mode:'single', standards:state.revealedStd, sampleResults:state.revealedSample, reg:state.calib}; }
+    }
+    setStatus('ready'); renderSide(); renderPane();
+  }, delay);
+}
+
+/* ---------- checkpoint & remedy ---------- */
+function checkpointOk(){
+  state.checkpointChoice='ok';
+  state.seqContext='samples';
+  state.queue=state.method.samples.map((s,i)=>({type:'sample', idx:i, name:s.name}));
+  state.qIndex=0; state.manualSub=0; state.phase='seq';
+  renderSide(); renderPane();
+}
+function checkpointBad(){ state.checkpointChoice='error'; state.checkpointStage='remedy'; renderSide(); renderPane(); }
+function remedyRedoOne(){
+  const n=parseInt(prompt(`Numero dello standard da ripreparare (1-${state.method.standards.length}):`),10);
+  if(!n||n<1||n>state.method.standards.length){ alert('Numero non valido.'); return; }
+  state.seqContext='redo-one';
+  state.queue=[{type:'standard', idx:n-1, name:state.method.standards[n-1].name}];
+  state.qIndex=0; state.manualSub=0; state.phase='seq';
+  renderSide(); renderPane();
+}
+function remedyRedoAll(){ startSequence(); renderSide(); renderPane(); }
+function remedyDiscard(){
+  const n=parseInt(prompt(`Numero dello standard da scartare (vedi # nella scheda Dati, 1-${state.revealedStd.length}):`),10);
+  if(!n||n<1||n>state.revealedStd.length){ alert('Numero non valido.'); return; }
+  if(state.revealedStd.length-1<2){ alert('Restano troppo pochi standard: la retta non può essere calcolata.'); return; }
+  state.revealedStd.splice(n-1,1);
+  state.calib=computeRegression(state.revealedStd);
+  state.checkpointStage='decide'; state.checkpointChoice=null;
+  renderSide(); renderPane();
+}
+
+/* ---------- side panel ---------- */
+function uvRange(){const m=state.method; return state.mode==='scan'?m.wlStart<350:m.wl<350;}
+function renderSide(){
+  const m=state.method; $('#dispMethod').textContent=m.name;
+  $('#uvNote').style.display=uvRange()?'block':'none';
+  $('#methodSummary').innerHTML = `${m.name}<br><span style="color:var(--muted)">${state.mode==='scan'?`Scan ${m.wlStart}-${m.wlEnd} nm`:`λ = ${m.wl} nm`}</span><br><span style="color:var(--muted)">${m.standards.length} standard · ${m.samples.length} campioni · ${m.concUnit||'—'}</span>`;
+
+  $('#stepCuv').className='tile'+(state.prep.cuvOk?' done':(state.phase!=='prep'?' locked':''));
+  $('#stepBlank').className='tile'+(state.prep.blank?' done':(state.prep.cuvOk&&state.phase==='prep'?'':' locked'));
+  $('#stepZero').className='tile'+(state.prep.zero?' done':((state.prep.cuvOk&&state.prep.blank&&state.phase==='prep')?'':' locked'));
+  const nS=state.method.standards.length;
+  $('#cuvList').innerHTML=cuvetteNames().map((n,i)=>`<div class="mc" title="${n}">${IC.cuv(cuvColor(i),state.prep.cuvOk)}<span>${i===0?'B':i<=nS?'S'+i:'C'+(i-nS)}</span></div>`).join('');
+
+  const box=$('#seqSection'); box.innerHTML='';
+  if(state.phase==='seq'){
+    const item=state.queue[state.qIndex];
+    const totalLabel = item.type==='standard' ? `Standard ${state.qIndex+1} di ${state.queue.length}` : item.type==='sample' ? `Campione ${state.qIndex+1} di ${state.queue.length}` : `${item.name} · ${state.qIndex+1} di ${state.queue.length}`;
+    box.appendChild(el('h2',null,'Sequenza di misura'));
+    box.appendChild(el('div','progress',totalLabel));
+    const row=el('div','tiles'); box.appendChild(row);
+    const st=n=>state.manualSub>n?'done':state.manualSub===n?'active':'';
+    const mk=(n,svg,cap,fn)=>{const b=el('button','tile '+st(n)); b.innerHTML=svg+'<span>'+cap+'</span>'; b.disabled=state.manualSub!==n; b.title=cap.replace('<br>',' '); b.onclick=fn; row.appendChild(b);};
+    mk(0,IC.remove(colorByName(state.prevLabel)),'Togli<br>'+state.prevLabel,seqRemovePrev);
+    mk(1,IC.insert(null,colorByName(item.name)),'Inserisci<br>'+item.name,seqInsertCurrent);
+    mk(2,IC.enter(),item.type==='scan'?'Invio<br>(scansione)':'Invio<br>(lettura)',seqPressEnter);
+  } else if(state.phase==='checkpoint'){
+    box.appendChild(el('h2',null,'Sequenza di misura'));
+    const msg = state.checkpointStage==='remedy' ? 'Scegli come procedere nella scheda "Retta di taratura".' : 'Taratura completata. Valuta la retta nella scheda "Retta di taratura" prima di procedere all\'analisi dei campioni.';
+    box.appendChild(el('div','info-box',msg));
+  } else if(state.phase==='done'){
+    box.appendChild(el('h2',null,'Sequenza di misura'));
+    box.appendChild(el('div','info-box','Analisi completata.'));
+  }
+}
+
+/* ---------- charts ---------- */
+function drawAxes(ctx,w,h,pad,xMin,xMax,yMin,yMax,xLabel,yLabel){
+  ctx.clearRect(0,0,w,h);
+  ctx.strokeStyle='#d7dee3'; ctx.fillStyle='#6b7885'; ctx.font='11px IBM Plex Mono, monospace'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,10); ctx.lineTo(pad,h-pad); ctx.lineTo(w-10,h-pad); ctx.stroke();
+  for(let k=0;k<=4;k++){ const yv=yMin+(yMax-yMin)*k/4; const yy=h-pad-(h-pad-10)*k/4; ctx.fillText(yv.toFixed(2),4,yy+3); ctx.strokeStyle='#eef1f3'; ctx.beginPath(); ctx.moveTo(pad,yy); ctx.lineTo(w-10,yy); ctx.stroke(); }
+  for(let k=0;k<=4;k++){ const xv=xMin+(xMax-xMin)*k/4; const xx=pad+(w-10-pad)*k/4; ctx.fillText(xv.toFixed(0),xx-10,h-pad+14); }
+  ctx.fillStyle='#1c2530'; ctx.fillText(xLabel,w/2-20,h-4);
+  ctx.save(); ctx.translate(12,h/2+20); ctx.rotate(-Math.PI/2); ctx.fillText(yLabel,0,0); ctx.restore();
+  return {toX:v=>pad+(w-10-pad)*(v-xMin)/(xMax-xMin||1), toY:v=>h-pad-(h-pad-10)*(v-yMin)/(yMax-yMin||1)};
+}
+function buildNotes(){
+  const wrap=el('div','notes');
+  wrap.appendChild(el('h2',null,'Note di laboratorio'));
+  const ta=el('textarea'); ta.placeholder="Scrivi qui la tua valutazione: l'analisi ti sembra corretta? Se no, quale errore ipotizzi e perché?";
+  wrap.appendChild(ta);
+  return wrap;
+}
+
+function updateTabs(){
+  const vis=state.mode==='scan'?['spettro','dati']:['dati','taratura'];
+  if(!vis.includes(state.tab)) state.tab=vis[0];
+  document.querySelectorAll('.tab').forEach(t=>{t.style.display=vis.includes(t.dataset.tab)?'':'none'; t.classList.toggle('active',t.dataset.tab===state.tab);});
+}
+function renderPane(){
+  updateTabs();
+  const pane=$('#pane'); pane.innerHTML=''; const unit=state.method.concUnit||'';
+  if(state.tab==='spettro'){
+    if(state.mode!=='scan'||!state.scans.length){ pane.appendChild(el('p','',"Esegui la scansione di standard e campioni per vedere gli spettri.")); return; }
+    const W=760,H=380; const c=el('canvas'); c.width=W; c.height=H; pane.appendChild(c);
+    const ctx=c.getContext('2d'); const yMax=Math.max(...state.scans.map(sc=>Math.max(...sc.pts.map(p=>p.abs))))*1.25;
+    const s=drawAxes(ctx,W,H,50,state.method.wlStart,state.method.wlEnd,0,Math.max(yMax,0.2),"Lunghezza d'onda (nm)","Assorbanza (ABS)");
+    const placed=[];
+    state.scans.forEach(sc=>{
+      ctx.strokeStyle=sc.color; ctx.lineWidth=2; ctx.beginPath();
+      sc.pts.forEach((p,i)=>{const x=s.toX(p.wl),y=s.toY(p.abs); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}); ctx.stroke();
+      const lx=s.toX(sc.peak.wl); let ly=s.toY(sc.peak.abs)-8;
+      while(placed.some(q=>Math.abs(q.x-lx)<26&&Math.abs(q.y-ly)<14)) ly-=14;
+      placed.push({x:lx,y:ly});
+      ctx.fillStyle=sc.color; ctx.font='bold 11px IBM Plex Sans, sans-serif'; ctx.textAlign='center'; ctx.fillText(sc.tag,lx,ly); ctx.textAlign='start';
+    });
+    const lg=el('div','legend');
+    state.scans.forEach(sc=>{ const it=el('span','lg'); it.innerHTML=`<i style="background:${sc.color}"></i>${sc.tag} · ${sc.name}${sc.conc!=null?' ('+sc.conc+' '+unit+')':''}`; lg.appendChild(it); });
+    pane.appendChild(lg);
+  }
+  else if(state.tab==='dati'){
+    if(state.mode==='scan'){
+      if(!state.scans.length){ pane.appendChild(el('p','','Nessun dato acquisito. Avvia la sequenza di misura.')); return; }
+      const t=el('table');
+      t.innerHTML='<tr><th>Soluzione</th><th>Concentrazione</th><th>λ picco principale</th><th>Assorbanza al picco</th></tr>'+
+        state.scans.map(sc=>`<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sc.color};margin-right:6px"></span>${sc.tag} · ${sc.name}</td><td>${sc.conc!=null?sc.conc+' '+unit:'—'}</td><td>${sc.peak.wl.toFixed(1)} nm</td><td>${sc.peak.abs.toFixed(3)} ABS</td></tr>`).join('');
+      pane.appendChild(t);
+    } else {
+      if(state.revealedStd.length===0){ pane.appendChild(el('p','','Nessun dato acquisito. Avvia la sequenza di misura.')); return; }
+      const t=el('table');
+      t.innerHTML='<tr><th>#</th><th>Soluzione</th><th>Concentrazione</th><th>Assorbanza</th></tr>'+
+        state.revealedStd.map((s,i)=>`<tr><td>${i+1}</td><td>${s.name}</td><td>${s.conc} ${unit}</td><td>${s.abs.toFixed(3)} ABS</td></tr>`).join('')+
+        state.revealedSample.map(s=>`<tr><td>—</td><td>${s.name}</td><td>${s.conc.toFixed(2)} ${unit} (calc.)</td><td>${s.abs.toFixed(3)} ABS</td></tr>`).join('');
+      pane.appendChild(t);
+    }
+  }
+  else if(state.tab==='taratura'){
+    if(state.mode!=='single'){ pane.appendChild(el('p','',"Disponibile in modalità Singola lunghezza d'onda.")); return; }
+    if(state.revealedStd.length<2){ pane.appendChild(el('p','','Completa la misura degli standard per calcolare la retta di taratura.')); return; }
+    const reg = state.calib || computeRegression(state.revealedStd);
+    const c=el('canvas'); c.width=560; c.height=380; pane.appendChild(c);
+    const ctx=c.getContext('2d'); const st=state.revealedStd;
+    const xMax=Math.max(...st.map(s=>s.conc))*1.2, yMax=Math.max(...st.map(s=>s.abs))*1.25;
+    const s=drawAxes(ctx,560,380,50,0,xMax,0,Math.max(yMax,0.2),`Concentrazione (${unit})`,'Assorbanza (ABS)');
+    ctx.strokeStyle='#f0a83c'; ctx.lineWidth=1.5; ctx.beginPath();
+    ctx.moveTo(s.toX(0), s.toY(reg.intercept)); ctx.lineTo(s.toX(xMax), s.toY(reg.slope*xMax+reg.intercept)); ctx.stroke();
+    ctx.fillStyle='#2a9d6f'; st.forEach(p=>{ ctx.beginPath(); ctx.arc(s.toX(p.conc), s.toY(p.abs), 4, 0, 7); ctx.fill(); });
+    const box=el('div','reg-box');
+    box.innerHTML=`<div>Retta: <b>y = ${reg.slope.toFixed(4)}x + ${reg.intercept.toFixed(4)}</b></div><div>R² = <b>${reg.r2.toFixed(4)}</b></div>`;
+    pane.appendChild(box);
+
+    if(state.phase==='checkpoint' && state.checkpointStage==='decide' && state.revealedStd.length===state.method.standards.length){
+      const cp=el('div','checkpoint');
+      const okBtn=el('button','ok',"I dati sono corretti, procedi all'analisi del campione"); okBtn.onclick=checkpointOk;
+      const badBtn=el('button','bad','I dati non sono corretti, prova a capire di che errore si tratta'); badBtn.onclick=checkpointBad;
+      cp.appendChild(okBtn); cp.appendChild(badBtn); pane.appendChild(cp);
+    } else if(state.phase==='checkpoint' && state.checkpointStage==='remedy'){
+      const cp=el('div','checkpoint');
+      const b1=el('button','neutral','Riprepara uno standard'); b1.onclick=remedyRedoOne;
+      const b2=el('button','neutral','Riprepara tutti gli standard e ripeti l\'analisi'); b2.onclick=remedyRedoAll;
+      const b3=el('button','neutral','Scarta uno standard (indica il numero)'); b3.onclick=remedyDiscard;
+      cp.appendChild(b1); cp.appendChild(b2); cp.appendChild(b3); pane.appendChild(cp);
+    } else if(state.phase==='done' && state.checkpointChoice==='ok'){
+      pane.appendChild(el('p','','Valutazione registrata: dati ritenuti corretti.'));
+    }
+    pane.appendChild(buildNotes());
+  }
+}
+
+/* ---------- icons ---------- */
+const COL=['#5aa9e6','#7bc47f','#e8b04a','#d9776b','#a58bd6','#4fb8b0'];
+const SW='stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"';
+const cuvS=(x,y,fill,l)=>`<rect x="${x}" y="${y}" width="16" height="26" rx="2" fill="#fff" stroke="currentColor" stroke-width="2.5"/><rect x="${x+2}" y="${y+10}" width="12" height="14" fill="${fill}" opacity=".8"/>${l?`<text x="${x+8}" y="${y+21}" font-size="9" font-weight="700" text-anchor="middle" fill="#1c2530">${l}</text>`:''}`;
+const cuvColor=i=>{const nS=state.method.standards.length; if(i<=0)return '#bfe3f7'; if(i<=nS){const t=nS>1?(i-1)/(nS-1):1; return `hsl(140,60%,${Math.round(82-t*45)}%)`;} return '#f2d43d';};
+const colorByName=n=>cuvColor(cuvetteNames().indexOf(n));
+const SCOL=['#2a7de1','#e8590c','#2f9e44','#9c36b5','#e03131','#0c8599','#f08c00','#5c7cfa','#c2255c','#66a80f'];
+const IC={
+  cuv:(c,f)=>`<svg viewBox="0 0 24 36" width="20" height="30"><rect x="4" y="3" width="16" height="30" rx="2" fill="#fff" stroke="currentColor" stroke-width="2"/>${f?`<rect x="6" y="15" width="12" height="16" fill="${c}" opacity=".8"/>`:''}</svg>`,
+  rack:()=>`<svg viewBox="0 0 64 64">${cuvS(6,22,'#bfe3f7')}${cuvS(24,22,'hsl(140,60%,60%)')}${cuvS(42,22,'#f2d43d')}<path d="M4 54h56" ${SW}/></svg>`,
+  insert:(l,c)=>`<svg viewBox="0 0 64 64">${cuvS(24,3,c||COL[0],l)}<path d="M32 34v10m-6-5 6 6 6-6" ${SW}/><path d="M12 50v10h40V50" ${SW}/></svg>`,
+  remove:c=>`<svg viewBox="0 0 64 64">${cuvS(24,34,c||COL[0])}<path d="M32 26V8m-6 6 6-6 6 6" ${SW}/><path d="M14 38v22h36V38" ${SW}/></svg>`,
+  zero:()=>`<svg viewBox="0 0 64 64"><rect x="6" y="8" width="52" height="24" rx="4" fill="#0a0f14"/><text x="32" y="26" font-size="13" font-family="monospace" font-weight="700" text-anchor="middle" fill="#4be3b0">0.000</text><circle cx="32" cy="47" r="10" ${SW}/><text x="32" y="51" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">0</text></svg>`,
+  enter:()=>`<svg viewBox="0 0 64 64"><rect x="8" y="14" width="48" height="36" rx="7" ${SW}/><path d="M43 24v12H24m6-6-6 6 6 6" ${SW}/></svg>`
+};
+$('#stepCuv').innerHTML=IC.rack()+'<span>Prepara<br>cuvette</span>';
+$('#stepBlank').innerHTML=IC.insert('B','#bfe3f7')+'<span>Inserisci<br>bianco</span>';
+$('#stepZero').innerHTML=IC.zero()+'<span>Azzera<br>strumento</span>';
+
+/* ---------- simulazione ---------- */
+const freshSim=()=>({on:false,started:false,fin:false,scenario:null,step:0,done:[0,0,0,0,0,0],score:0,ans:{},report:'',applied:false});
+state.sim=freshSim(); state.simCfg=null;
+const SIM_STEPS=['✉️ Richiesta','📋 Pianificazione','🧪 Campionamento','🔬 Analisi','📊 Interpretazione','📝 Report'];
+
+const SCENARIOS={
+ nitrati:{
+  id:'nitrati', missionTitle:'Nitrati in un torrente', missionBlurb:"Un consorzio di bonifica ti chiede di verificare l'azoto nitrico in un torrente a valle di terreni agricoli.",
+  company:'Consorzio di Bonifica Valle Serena', sender:"Ing. Marco Longhi – Responsabile Ambiente", subject:'Richiesta analisi azoto nitrico – Torrente Rio Fosso',
+  bodyHtml:"Gentile laboratorio,<br><br>il nostro consorzio gestisce i canali irrigui a valle di un'area a vocazione agricola. Ci è stato segnalato un possibile aumento dei nitrati nel <b>torrente Rio Fosso</b>, probabilmente legato alle concimazioni della stagione.<br><br>Vi chiediamo di determinare la concentrazione di <b>azoto nitrico (N-NO₃⁻)</b> su un campione che vi faremo pervenire, e di indicarci nel rapporto di prova se il valore desta preoccupazione rispetto alle zone vulnerabili ai nitrati (limite di riferimento: 50 mg/L di NO₃⁻).<br><br>Cordiali saluti,<br>Marco Longhi",
+  wl:420, unit:'mg/L N', methodName:'Azoto nitrico – salicilato di sodio (Metodo A1)', methodDesc:'Determinazione spettrofotometrica dell\'azoto nitrico mediante reazione con salicilato di sodio in ambiente alcalino',
+  appRange:[0.5,5.0], stockConc:100, stockUnit:'mg/L N', sampleName:'Torrente Rio Fosso', trueConcRange:[1.0,4.0],
+  refLimit:11.3, refLabel:'50 mg/L di NO₃⁻ (limite zone vulnerabili ai nitrati), pari a circa 11,3 mg/L di N',
+  planIntro:"Prima di andare sul posto, scegli il metodo analitico e i suoi parametri.",
+  planQ:[
+   {q:'Quale metodo scegli per determinare l\'azoto nitrico?',o:['Spettrofotometria con salicilato di sodio (Metodo A1)','Argentometria','Titolazione acido-base'],a:0,f:'Il metodo A1 si basa sulla reazione tra nitrati e salicilato di sodio.'},
+   {q:'A quale lunghezza d\'onda si effettua la lettura?',o:['220 nm','420 nm','700 nm'],a:1,f:'Il composto giallo che si forma si legge a 420 nm.'},
+   {q:'In quale intervallo di concentrazione è applicabile il metodo?',o:['0,5 – 5,0 mg/L di N','50 – 500 mg/L di N','0,001 – 0,3 mg/L di N'],a:0,f:'Il campo di applicazione dichiarato è 0,5–5,0 mg/L di azoto nitrico.'},
+   {q:'Che tipo di cuvetta serve a questa lunghezza d\'onda?',o:['Quarzo, obbligatorio','Vetro o plastica: il quarzo non è necessario','Nessuna cuvetta, si legge a occhio'],a:1,f:'420 nm è nel visibile: il quarzo serve solo sotto i 350 nm.'},
+   {q:'Che colore sviluppa la reazione positiva?',o:['Giallo, in ambiente alcalino','Blu intenso','Rosa'],a:0,f:'Il prodotto ha, in soluzione alcalina, un colore giallo stabile.'},
+   {q:'Quale ione interferisce se presente sopra i 400 mg/L?',o:['Cloruro','Potassio','Calcio'],a:0,f:'I cloruri non interferiscono fino a 400 mg/L; oltre, danno interferenza negativa.'}
+  ],
+  sampQ:[
+   {q:'Come conservi il campione se non lo analizzi subito?',o:['Refrigerato al buio, analisi appena possibile','A temperatura ambiente, non fa differenza','Congelato in una bottiglia di vetro piena fino all\'orlo'],a:0,f:'Il freddo e il buio rallentano le trasformazioni dei composti azotati; il vetro pieno rischia di rompersi congelando.'},
+   {q:'Il campione arriva torbido: cosa fai prima dell\'analisi?',o:['Lo tratti con carbone attivo e/o lo filtri, come da metodo','Lo agiti bene e basta','Lo diluisci 100 volte, tanto per sicurezza'],a:0,f:'Il metodo prevede un trattamento specifico per i campioni torbidi.'},
+   {q:'Che contenitore usi per il prelievo?',o:['Contenitore pulito in polietilene, quasi pieno fino all\'orlo','Un contenitore metallico qualsiasi','Non ha importanza'],a:0,f:'Un contenitore inerte e pulito evita contaminazioni.'}
+  ]
+ },
+ fosfati:{
+  id:'fosfati', missionTitle:'Ortofosfati in un lago', missionBlurb:"Un consorzio lacustre ti chiede di controllare l'ortofosfato in un affluente, per il rischio di eutrofizzazione.",
+  company:'Consorzio Lago di Smeraldo', sender:"Dott.ssa Sara Conti – Ufficio Tecnico", subject:'Richiesta analisi ortofosfato – Immissario Torrente Chiaro',
+  bodyHtml:"Gentile laboratorio,<br><br>il nostro consorzio monitora la qualità delle acque del Lago di Smeraldo. Temiamo un apporto di fosforo dall'<b>immissario Torrente Chiaro</b>, che potrebbe favorire fenomeni di eutrofizzazione.<br><br>Vi chiediamo di determinare la concentrazione di <b>ortofosfato (come P)</b> su un campione che vi faremo pervenire, indicando nel rapporto se il valore è compatibile con un lago in buono stato (riferimento gestionale: 0,1 mg/L di P).<br><br>Distinti saluti,<br>Sara Conti",
+  wl:882, unit:'mg/L P', methodName:'Ortofosfato – blu di molibdeno (Metodo A1)', methodDesc:'Determinazione spettrofotometrica dell\'ortofosfato mediante riduzione a blu di molibdeno con acido ascorbico',
+  appRange:[0.001,0.3], stockConc:10, stockUnit:'mg/L P', sampleName:'Immissario Torrente Chiaro', trueConcRange:[0.02,0.25],
+  refLimit:0.1, refLabel:'0,1 mg/L di P (riferimento gestionale per un lago in buono stato)',
+  planIntro:"Prima di andare sul posto, scegli il metodo analitico e i suoi parametri.",
+  planQ:[
+   {q:'Su quale reazione si basa il dosaggio dell\'ortofosfato?',o:['Reazione con molibdato d\'ammonio e riduzione a blu di molibdeno con acido ascorbico','Reazione con salicilato di sodio','Titolazione con nitrato d\'argento'],a:0,f:'L\'eteropoliacido formato viene ridotto ad blu di molibdeno, intensamente colorato.'},
+   {q:'A quale lunghezza d\'onda leggi l\'assorbanza?',o:['420 nm','543 nm','882 nm'],a:2,f:'La lettura si effettua a 882 nm.'},
+   {q:'In quale intervallo di concentrazione è applicabile il metodo?',o:['0,001 – 0,3 mg/L di P','0,5 – 5,0 mg/L di P','10 – 100 mg/L di P'],a:0,f:'Il campo di applicazione dichiarato è 0,001–0,3 mg/L di fosforo.'},
+   {q:'Serve la cuvetta di quarzo a questa lunghezza d\'onda?',o:['Sì, sempre','No: il quarzo serve solo sotto i 350 nm','Solo se il campione è colorato'],a:1,f:'882 nm è ben oltre il range UV: quarzo non necessario.'},
+   {q:'Cosa non deve contenere la vetreria usata per questa analisi?',o:['Detergenti contenenti fosfato','Acqua distillata','Aria'],a:0,f:'Tracce di detergenti fosfatati falserebbero il bianco e i risultati.'},
+   {q:'Quale ione interferisce dando una colorazione simile al fosfato?',o:['Arseniato','Sodio','Cloruro'],a:0,f:'L\'arseniato dà la stessa reazione cromatica del fosfato.'}
+  ],
+  sampQ:[
+   {q:'Su quale porosità di membrana filtri il campione?',o:['0,45 µm','5 µm','Non va filtrato'],a:0,f:'Il campione va filtrato su membrana da 0,45 µm esente da fosfati.'},
+   {q:'Se devi determinare tracce e non puoi analizzare subito, come conservi il campione?',o:['In bottiglia di polietilene, congelato','A temperatura ambiente per una settimana','In un contenitore metallico aperto'],a:0,f:'Congelamento in polietilene per rallentare le trasformazioni del fosforo.'},
+   {q:'Perché serve vetreria dedicata a questa analisi?',o:['Per evitare contaminazioni da fosfato residuo di altri usi','Per motivi estetici','Non è importante'],a:0,f:'Anche tracce di fosfato residuo alterano un\'analisi così sensibile.'}
+  ]
+ }
+};
+
+function complianceQ(sc,conc){
+  const ok=conc<sc.refLimit;
+  return {q:`Confrontando il risultato con il riferimento (${sc.refLabel}), l'acqua risulta...`,o:['Conforme (sotto il riferimento)','Non conforme (sopra il riferimento)','Non è possibile dirlo'],a:ok?0:1,f:'Il valore misurato è '+(ok?'inferiore':'superiore')+' al riferimento indicato.'};
+}
+function closeSim(){ state.sim.on=false; $('#simView').style.display='none'; $('#openSim').classList.remove('on'); }
+function svQuiz(box,key,list){
+  const A=state.sim.ans; A[key]=A[key]||list.map(()=>({ok:false,bad:[],w:0}));
+  list.forEach((it,i)=>{
+    const a=A[key][i], q=el('div','q'), o=el('div','opts');
+    q.appendChild(el('div',null,(i+1)+'. '+it.q));
+    it.o.forEach((t,j)=>{ const b=el('button','opt'+(a.ok&&j===it.a?' ok':a.bad.includes(j)?' no':''),t); b.disabled=a.ok;
+      b.onclick=()=>{ if(j===it.a){a.ok=true; state.sim.score+=Math.max(2,10-3*a.w);} else {a.bad.push(j); a.w++;} renderSim(); }; o.appendChild(b); });
+    q.appendChild(o);
+    if(a.ok) q.appendChild(el('div','fb','✔ '+it.f)); else if(a.bad.length) q.appendChild(el('div','fb','✘ Non è la risposta giusta, riprova.'));
+    box.appendChild(q);
+  });
+  return A[key].every(a=>a.ok);
+}
+function applySimMethod(sc){
+  Object.assign(state.method,{name:sc.methodName,desc:sc.methodDesc,wl:sc.wl,concUnit:sc.unit,standards:[],samples:[{name:sc.sampleName}]});
+  state.mode='single'; state.sim.applied=true; resetAll(); setMode();
+}
+function makeSimCfg(sc){
+  const slope=(0.85/sc.appRange[1])*(0.85+Math.random()*0.3);
+  const trueConc=Math.round((sc.trueConcRange[0]+Math.random()*(sc.trueConcRange[1]-sc.trueConcRange[0]))*1000)/1000;
+  return {slope, trueConc};
+}
+function svReport(sc){
+  const r=state.revealedSample[0], c=state.calib, m=state.method;
+  return ['RAPPORTO DI PROVA','Cliente: '+sc.company,'Data: '+new Date().toLocaleDateString('it-IT'),
+   'Oggetto: '+sc.subject,'','Metodo: '+m.name+' – λ = '+m.wl+' nm',
+   'Taratura: '+state.revealedStd.length+' standard ('+state.revealedStd.map(s=>s.conc).join(', ')+' '+m.concUnit+')',
+   'Retta: y = '+c.slope.toFixed(4)+'x + '+c.intercept.toFixed(4)+' ; R2 = '+c.r2.toFixed(4),'',
+   'Risultato: '+r.conc.toFixed(3)+' '+m.concUnit,'Riferimento: '+sc.refLabel,'','Conclusioni: ','','Il tecnico di laboratorio: '].join('\n');
+}
+function renderSim(){
+  const v=$('#simView'); const S=state.sim; v.innerHTML='';
+  const wrap=h=>{const t=el('div','sv-title'); t.innerHTML=h; v.appendChild(t); return t;};
+  if(!S.started){
+    const t=wrap(`<h1>SIMULAZIONE: INCARICO DI LABORATORIO</h1><p>Scegli la missione. Dalla richiesta del cliente al rapporto di prova finale, dovrai pianificare, campionare, analizzare e interpretare i dati con le tue mani.</p>`);
+    const row=el('div'); row.style.cssText='display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:10px';
+    Object.values(SCENARIOS).forEach(sc=>{
+      const c=el('div','sv-card'); c.style.cssText='max-width:250px;cursor:pointer';
+      c.innerHTML=`<h2>${sc.missionTitle}</h2><p>${sc.missionBlurb}</p>`;
+      c.onclick=()=>{ S.scenario=sc.id; S.started=true; state.simCfg=makeSimCfg(sc); renderSim(); };
+      row.appendChild(c);
+    });
+    t.appendChild(row); return;
+  }
+  const sc=SCENARIOS[S.scenario];
+  if(S.done[2]&&!S.done[3]&&S.applied&&state.mode==='single'&&state.phase==='done'&&state.revealedSample.length){S.done[3]=1;S.score+=20;}
+  if(S.fin){
+    const t=wrap(`<h1>MISSIONE COMPLETATA</h1><p>Rapporto di prova consegnato a ${sc.company}. Punteggio finale: <b>${S.score}</b></p>`);
+    const b=el('button','gbtn','Nuova missione'); b.onclick=()=>{state.sim=freshSim(); state.sim.on=true; state.simCfg=null; renderSim();}; t.appendChild(b);
+    const c=el('button','gbtn sec','Torna al simulatore'); c.style.marginLeft='10px'; c.onclick=closeSim; t.appendChild(c); return;
+  }
+  const nd=S.done.filter(Boolean).length;
+  const hud=el('div','hud'); hud.innerHTML=`<span>${sc.missionTitle.toUpperCase()}</span><span>PUNTI <b>${S.score}</b></span><div class="bar"><i style="width:${nd/6*100}%"></i></div><span>${nd}/6</span>`;
+  const cl=el('button','gbtn sec','Torna al simulatore'); cl.style.cssText='padding:6px 12px;font-size:12px'; cl.onclick=closeSim; hud.appendChild(cl); v.appendChild(hud);
+  const main=el('div','sv-main'), nav=el('div','sv-steps'), card=el('div','sv-card');
+  SIM_STEPS.forEach((n,i)=>{ const b=el('button','sv-step'+(S.step===i?' cur':'')+(S.done[i]?' done':''),(S.done[i]?'✔ ':'')+n); b.disabled=i>0&&!S.done[i-1]; b.onclick=()=>{S.step=i; renderSim();}; nav.appendChild(b); });
+  main.appendChild(nav); main.appendChild(card); v.appendChild(main);
+  const H=t=>card.appendChild(el('h2',null,t)), P=t=>card.appendChild(el('p',null,t));
+  const next=(label,fn)=>{const b=el('button','gbtn',label); b.style.marginTop='14px'; b.onclick=fn; card.appendChild(b);};
+  const adv=(i,pts)=>{ if(!S.done[i]){S.done[i]=1;S.score+=pts;} S.step=Math.min(5,i+1); renderSim(); };
+
+  if(S.step===0){
+    H('Nuova email ricevuta');
+    const m=el('div','mail'); m.innerHTML=`<div class="hd"><b>Da:</b> ${sc.sender} – ${sc.company}<br><b>A:</b> Laboratorio analisi<br><b>Oggetto:</b> ${sc.subject}</div>${sc.bodyHtml}`;
+    card.appendChild(m); next(S.done[0]?'Continua':"Accetta l'incarico",()=>adv(0,10));
+  } else if(S.step===1){
+    H('Pianificazione del metodo'); P(sc.planIntro);
+    const quizDone=svQuiz(card,sc.id+'_plan',sc.planQ);
+    if(quizDone){
+      const cb=el('div','info-box'); cb.style.cssText='background:#0f1722;color:#cfe0ee;margin-top:14px;line-height:1.6';
+      cb.innerHTML=`<b>Calcolo delle soluzioni standard</b><br>Hai a disposizione una soluzione madre a ${sc.stockConc} ${sc.stockUnit}. Il metodo è applicabile tra ${sc.appRange[0]} e ${sc.appRange[1]} ${sc.unit}.<br>Decidi tu: quanti standard preparare, a quali concentrazioni, e come li otterresti per diluizione dalla soluzione madre. Scrivi qui sotto i tuoi calcoli.`;
+      card.appendChild(cb);
+      const ta=el('textarea'); ta.style.marginTop='8px'; ta.placeholder='Es. Standard 1: prelevo ... mL di soluzione madre e porto a volume di ... mL → concentrazione ... mg/L; Standard 2: ...';
+      ta.value=S.ans[sc.id+'_calc']||''; ta.oninput=()=>{S.ans[sc.id+'_calc']=ta.value;};
+      card.appendChild(ta);
+      next(S.done[1]?'Continua':'Ho deciso, imposta il metodo',()=>{
+        if(!S.done[1]){ if(!(ta.value||'').trim()){ alert('Scrivi prima i tuoi calcoli sulle soluzioni standard.'); return; } applySimMethod(sc); }
+        adv(1,15);
+      });
+    }
+  } else if(S.step===2){
+    H('Campionamento'); P('Sei sul posto, davanti al punto di prelievo indicato dal cliente.');
+    if(svQuiz(card,sc.id+'_samp',sc.sampQ)) next(S.done[2]?'Continua':'Consegna il campione al laboratorio',()=>adv(2,10));
+  } else if(S.step===3){
+    H('Analisi');
+    if(S.done[3]){ P('Analisi completata: retta di taratura validata e campione misurato.'); next("Continua all'interpretazione",()=>{S.step=4; renderSim();}); }
+    else { P(`Vai al simulatore: imposta i tuoi standard in "Imposta metodo" (li hai già calcolati), prepara le cuvette, azzera con il bianco, misura gli standard, valuta la retta e solo se è corretta analizza il campione "${sc.sampleName}".`); next('Vai al simulatore',closeSim); }
+  } else if(S.step===4){
+    H('Interpretazione dei dati');
+    const r=state.revealedSample[0];
+    if(!r){ P("Nessun risultato disponibile: completa prima l'analisi."); }
+    else {
+      const c=state.calib, inRange=r.conc>=sc.appRange[0]&&r.conc<=sc.appRange[1];
+      P(`Risultato: ${r.conc.toFixed(3)} ${sc.unit} · Retta: y = ${c.slope.toFixed(4)}x + ${c.intercept.toFixed(4)} · R² = ${c.r2.toFixed(4)}`);
+      const Q=[complianceQ(sc,r.conc),
+        {q:'Prima di fidarti del risultato cosa controlli?',o:["Che R² sia vicino a 1 e il campione rientri nell'intervallo degli standard",'Solo che il numero sia positivo','Niente: lo strumento non sbaglia'],a:0,f:'Una buona taratura e un risultato dentro il range sono la base di un dato affidabile.'},
+        {q:`Il risultato rientra nell'intervallo di applicabilità del metodo (${sc.appRange[0]}-${sc.appRange[1]} ${sc.unit})?`,o:['Sì','No','Non è rilevante'],a:inRange?0:1,f:inRange?"Il valore rientra nell'intervallo: il metodo è applicabile senza diluizioni.":"Il valore è fuori dall'intervallo di taratura: servirebbe diluire il campione e ripetere l'analisi."}];
+      if(svQuiz(card,sc.id+'_interp',Q)) next(S.done[4]?'Continua':'Passa al report',()=>adv(4,10));
+    }
+  } else {
+    H('Rapporto di prova'); P('Completa le conclusioni e consegna il rapporto al cliente.');
+    if(!S.report&&state.revealedSample[0]) S.report=svReport(sc);
+    const ta=el('textarea'); ta.value=S.report; ta.oninput=()=>{S.report=ta.value;}; card.appendChild(ta);
+    const row=el('div'); row.style.marginTop='12px';
+    const cp=el('button','gbtn sec','Copia il report'); cp.onclick=()=>{ ta.select(); try{ const p=navigator.clipboard&&navigator.clipboard.writeText(ta.value); if(p&&p.catch) p.catch(()=>document.execCommand('copy')); else document.execCommand('copy'); }catch(e){} cp.textContent='Copiato'; };
+    const fin=el('button','gbtn','Consegna il rapporto'); fin.style.marginLeft='10px'; fin.onclick=()=>{ if(!S.done[5]){S.done[5]=1;S.score+=10;} S.fin=true; renderSim(); };
+    row.appendChild(cp); row.appendChild(fin); card.appendChild(row);
+  }
+}
+$('#openSim').onclick=()=>{ if(state.sim.on){closeSim();return;} state.sim.on=true; $('#simView').style.display='block'; $('#openSim').classList.add('on'); renderSim(); };
+
+/* ---------- init ---------- */
+$('#dispMethod').textContent=state.method.name;
+setMode();
+</script>
+</body>
+</html>
